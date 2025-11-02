@@ -103,7 +103,7 @@
 
     function getApiUrl(path) {
         // Assumes backend is running on the same host, port 8080
-        return `http://localhost:8080/api/voice-room${path}`;
+        return `https://codewithketan.me/api/voice-room${path}`;
     }
 
     // --- 1. REST API Calls (Setup) ---
@@ -160,7 +160,7 @@
     async function connectAndRegister() {
         log('Connecting to WebSocket...');
         try {
-            const socket = new SockJS('http://localhost:8080/ws');
+            const socket = new SockJS('https://codewithketan.me/ws');
             stompClient = Stomp.over(socket);
 
             stompClient.connect({}, (frame) => {
