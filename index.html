@@ -71,7 +71,7 @@
     // 🌐 Configuration
     // =====================================================
     const BASE_URL = "https://codewithketan.me";
-    const API_BASE = `${BASE_URL}/api/voice-room`;
+    const API_BASE = `${BASE_URL}/api/v1/voice-room`;
     const WS_URL = `${BASE_URL}/ws`; // WebSocket proxy
 
     // DOM Elements
@@ -188,7 +188,6 @@
         const audio = document.createElement('audio');
         audio.autoplay = true;
         audio.srcObject = event.streams[0];
-        audioContainer.innerHTML = '';
         audioContainer.appendChild(audio);
       };
 
@@ -203,7 +202,9 @@
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       stompClient.send('/app/offer', {}, JSON.stringify({
-        userId, roomId, sdp: offer.sdp
+        userId, roomId,
+        sdp: offer.sdp,
+        type: offer.type
       }));
     }
 
