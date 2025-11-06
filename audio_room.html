@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Room Client - SpaceHub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-900 text-white p-6 md:p-10">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold text-center mb-6">🎧 SpaceHub Voice Room Test Client</h1>
+
+    <!-- Setup Section -->
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
+      <h2 class="text-xl font-semibold mb-4">1️⃣ Setup Room Details</h2>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label for="chat-room-code" class="block text-sm font-medium text-gray-300">Chat Room Code</label>
+          <input type="text" id="chat-room-code" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white" placeholder="e.g., 3f2a40c1-1473-4cb8-ba42-d2a3b718ddac">
+        </div>
+
+        <div>
+          <label for="voice-room-name" class="block text-sm font-medium text-gray-300">Voice Room Name</label>
+          <input type="text" id="voice-room-name" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white" placeholder="e.g., DailyMeeting">
+        </div>
+
+        <div>
+          <label for="user-email" class="block text-sm font-medium text-gray-300">Created By (Email)</label>
+          <input type="email" id="user-email" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white" placeholder="e.g., user@gmail.com">
+        </div>
+
+        <div>
+          <label for="display-name" class="block text-sm font-medium text-gray-300">Display Name (Join As)</label>
+          <input type="text" id="display-name" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white" placeholder="e.g., Alice">
+        </div>
+      </div>
+
+      <div class="flex space-x-4 mt-4">
+        <button id="create-room-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
+          🎤 Create Voice Room
+        </button>
+        <button id="join-room-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
+          🎧 Join Voice Room
+        </button>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="room-controls" class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6 hidden">
+      <h2 class="text-xl font-semibold mb-4">2️⃣ Room Controls</h2>
+      <div class="flex space-x-4">
+        <button id="mute-btn" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg">Mute</button>
+        <button id="leave-room-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Leave Room</button>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="bg-gray-950 p-4 rounded-lg shadow-inner">
+      <h2 class="text-xl font-semibold mb-2">🧾 Event Log</h2>
+      <pre id="log" class="h-64 overflow-y-auto text-sm text-gray-300 whitespace-pre-wrap"></pre>
+    </div>
+  </div>
+
+  <script>
+    const BASE_URL = "https://codewithketan.me";
+    const API_BASE = `${BASE_URL}/api/v1/voice-room`;
+
+    const createRoomBtn = document.getElementById("create-room-btn");
+    const joinRoomBtn = document.getElementById("join-room-btn");
+    const muteBtn = document.getElementById("mute-btn");
+    const leaveRoomBtn = document.getElementById("leave-room-btn");
+    const logEl = document.getElementById("log");
+
+    const chatRoomCodeInput = document.getElementById("chat-room-code");
+    const voiceRoomNameInput = document.getElementById("voice-room-name");
+    const userEmailInput = document.getElementById("user-email");
+    const displayNameInput = document.getElementById("display-name");
+    const roomControls = document.getElementById("room-controls");
+
+    let sessionId, handleId, roomId;
+    let stompClient, pc, localStream;
+    let isMuted = false;
+
+    function log(msg) {
+      console.log(msg);
+      logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // -----------------------
+    // CREATE ROOM
+    // -----------------------
+    createRoomBtn.onclick = async () => {
+      const chatRoomCode = chatRoomCodeInput.value.trim();
+      const name = voiceRoomNameInput.value.trim();
+      const createdBy = userEmailInput.value.trim();
+
+      if (!chatRoomCode || !name || !createdBy) {
+        return log("❌ Please fill ChatRoomCode, Name, and CreatedBy.");
+      }
+
+      log("🎤 Creating room...");
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/create?chatRoomCode=${encodeURIComponent(chatRoomCode)}&name=${encodeURIComponent(name)}&createdBy=${encodeURIComponent(createdBy)}`,
+          { method: "POST" }
+        );
+
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error("Empty response from server");
+        }
+
+        if (!res.ok) throw new Error(data.message || "Failed to create room");
+
+        log(`✅ Voice room created: ${data.voiceRoomName} (Janus ID: ${data.janusRoomId})`);
+        roomId = data.janusRoomId;
+      } catch (err) {
+        log(`❌ Error creating room: ${err.message}`);
+      }
+    };
+
+    // -----------------------
+    // JOIN ROOM
+    // -----------------------
+    joinRoomBtn.onclick = async () => {
+      const displayName = displayNameInput.value.trim();
+      const voiceRoomId = roomId;
+
+      if (!displayName || !voiceRoomId) {
+        return log("❌ Please enter a display name and create a room first.");
+      }
+
+      log(`🎧 Joining room ${voiceRoomId} as ${displayName}...`);
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/join?voiceRoomId=${voiceRoomId}&displayName=${encodeURIComponent(displayName)}`,
+          { method: "POST" }
+        );
+
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error("Empty response from server");
+        }
+
+        if (!res.ok) throw new Error(data.message || "Failed to join room");
+
+        log(`✅ Joined room: ${data.voiceRoomName}`);
+        log(`Session ID: ${data.sessionId}, Handle ID: ${data.handleId}`);
+        roomControls.classList.remove("hidden");
+      } catch (err) {
+        log(`❌ Error joining: ${err.message}`);
+      }
+    };
+
+    // -----------------------
+    // MUTE / LEAVE
+    // -----------------------
+    muteBtn.onclick = () => {
+      isMuted = !isMuted;
+      if (localStream) {
+        localStream.getAudioTracks().forEach(track => (track.enabled = !isMuted));
+      }
+      muteBtn.textContent = isMuted ? "Unmute" : "Mute";
+      log(isMuted ? "🔇 Muted" : "🎙 Unmuted");
+    };
+
+    leaveRoomBtn.onclick = () => {
+      log("👋 Leaving room...");
+      roomControls.classList.add("hidden");
+    };
+  </script>
+</body>
+</html>
